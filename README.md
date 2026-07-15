@@ -1,134 +1,71 @@
-# 🌲 WhisperForest: Lắng Nghe Tiếng Thì Thầm Của Khu Rừng Nhân Quả
+# 🌲 WhisperForest: Causal Decision Intelligence Engine
 
-> *"Giữa đại ngàn dữ liệu mênh mông, kẻ lữ hành tầm thường chỉ nghe thấy tiếng xào xạc hỗn loạn của lá khô (Correlation). Nhưng với người biết cách lắng nghe, khu rừng luôn thì thầm những sợi dây nhân quả vô hình kết nối vạn vật (Causality)."*
+**WhisperForest** là một thư viện suy luận nhân quả và mô phỏng phản thực tế (Causal AI & Decision Intelligence Engine) được thiết kế nhằm mục đích bóc tách nhiễu loạn và lắng nghe những tín hiệu nhân quả tinh tế ("tiếng thì thầm") bị che khuất bởi các biến gây nhiễu (confounders) trong dữ liệu quan sát.
 
-**WhisperForest** là một động cơ trí tuệ nhân quả (Causal Decision Intelligence Engine) được thiết kế để lắng nghe những tiếng thì thầm nhỏ bé nhất của dữ liệu, bóc tách nhiễu loạn để tìm ra cội nguồn của sự cố (RCA) và mô phỏng các thế giới phản thực tế (Counterfactual Simulation).
-
----
-
-## 🗺️ Bản Đồ Kiến Trúc Của Đại Ngàn WhisperForest
-
-Giống như cấu trúc phân tầng của một khu rừng tự nhiên, WhisperForest kết nối các tầng suy luận để tạo nên một hệ sinh thái khép kín:
-
-```
-                  [ 🌲 Dữ Liệu Quan Sát ]
-                             │
-                             ▼
-     ┌──────────────────────────────────────────────┐
-     │ 🔍 Tầng Khám Phá (Discovery Layer)           │ ──► Lắng nghe & phác thảo bản đồ DAG
-     │    ├─ PC Algorithm (Constraint)              │     thông qua Ensemble Voting ổn định
-     │    └─ DirectLiNGAM (Functional)               │
-     └──────────────────────────────────────────────┘
-                             │
-                             ▼
-     ┌──────────────────────────────────────────────┐
-     │ 🪵 Tầng Cấu Trúc SCM (Structural Layer)       │ ──► Thiết lập hệ phương trình cấu trúc
-     │    └─ Pearl's Binary Threshold Abduction     │     để lưu giữ quy luật vận hành của rừng
-     └──────────────────────────────────────────────┘
-                             │
-                             ▼
-     ┌──────────────────────────────────────────────┐
-     │ 💊 Tầng Can Thiệp & Dự Báo (Causal & Pred)   │ ──► Ước lượng hiệu ứng can thiệp CATE
-     │    ├─ CausalForestDML (Double ML)            │     và chạy dự báo rủi ro tĩnh P(Y|X)
-     │    └─ RandomForest Classifier/Regressor      │
-     └──────────────────────────────────────────────┘
-         │                                      │
-         ▼                                      ▼
-┌────────────────────────────────┐    ┌────────────────────────────────┐
-│ 🔍 Tầng Suy Diễn Phản Thực Tế   │    │ ⚖️ Tầng Kiểm Chứng Nhất Quán    │
-│    (Counterfactual & RCA)      │    │    (Consistency Layer)         │
-│    Mô phỏng do(T=t) lan truyền │    │    Đo lường độ lệch pha giữa   │
-│    và truy vết nguyên nhân gốc │    │    Association và Causality    │
-│    rễ sự cố qua KNN Cohorts    │    │    để phát hiện Simpson's    │
-└────────────────────────────────┘    └────────────────────────────────┘
-```
+Khác với các mô hình máy học truyền thống chỉ dừng lại ở việc khai phá mối quan hệ tương quan ($P(Y|X)$), WhisperForest cung cấp một pipeline khép kín từ khám phá đồ thị nhân quả (Causal Discovery), ước lượng tác động can thiệp (CATE), mô phỏng phản thực tế ($P(Y|do(T))$) cho đến truy vết nguyên nhân gốc rễ (Root Cause Analysis - RCA).
 
 ---
 
-## 🕯️ Nghệ Thuật Lắng Nghe - 3 Cấp Độ Suy Luận Nhân Quả
+## 🏗️ Kiến Trúc Hệ Thống (System Architecture)
 
-### 1. Khám Phá Bản Đồ DAG (Ensemble Discovery & Stability Selection)
-Bằng cách kết hợp thuật toán **PC** (tìm kiếm sự độc lập có điều kiện) và **DirectLiNGAM** (khai phá mối quan hệ tuyến tính phi Gauss đệ quy) cùng cơ chế **Bootstrap Stability Selection**, WhisperForest gom nhặt ý kiến của hàng chục lượt lấy mẫu để vẽ nên đồ thị nhân quả DAG chính xác nhất, phá vỡ các vòng lặp luẩn quẩn (Cycle Breaking) dựa trên sức mạnh tương quan.
+Hệ thống được thiết kế dạng phân tầng mô-đun hóa, chia sẻ chung cơ sở dữ liệu và các mô hình nền tảng:
 
-### 2. Mô Phỏng Phản Thực Tế Chuẩn Pearl (SCM do-calculus)
-Khi ta gieo một tác nhân can thiệp $do(T = 1)$, WhisperForest không chỉ đổi nhãn một cột tĩnh. Nó thực hiện quy trình 3 bước của Pearl:
-*   **Abduction (Suy diễn):** Trích xuất xác suất sai số ngoại sinh (exogenous noise) của từng bệnh nhân. Với biến nhị phân, nó dùng cơ chế **Threshold Abduction** ($U_i$) để tìm ngưỡng nhạy cảm riêng biệt.
-*   **Action (Can thiệp):** Cắt bỏ mọi tác động đầu vào của biến can thiệp, ép nó nhận giá trị mong muốn.
-*   **Prediction (Dự báo):** Lan truyền tác động xuôi dòng theo cấu trúc liên kết topo của DAG để tính toán xác suất rủi ro phản thực tế mới, bảo toàn tuyệt đối thuộc tính logic của các nút trung gian.
-
-### 3. Tiếng Vọng Đồng Thanh (Causal Consistency Score)
-Khu rừng dữ liệu luôn đầy rẫy những ảo ảnh của sự gây nhiễu (Confounding by indication / Simpson's Paradox). Tầng chẩn đoán nhất quán chéo tự động so sánh:
-$$\text{Predictive Effect } P(Y|X) \quad \text{vs} \quad \text{SCM Simulation } P(Y|do(T)) \quad \text{vs} \quad \text{DML CATE } \tau(X)$$
-Nếu có sự mâu thuẫn (DML báo có tác dụng nhưng SCM/RF báo $0\%$), động cơ sẽ ngay lập tức gióng chuông cảnh báo:
-`CONFOUNDED TREATMENT SIGNAL DETECTED: Potential selection bias or strong confounding is masking the true treatment effect.`
-
----
-
-## 🛠️ Hướng Dẫn Vận Hành Động Cơ
-
-### Khởi Tạo Động Cơ và Nạp Dữ Liệu
-```python
-import pandas as pd
-from src.whisper_forest import WhisperForest
-
-# Đọc tập dữ liệu quan sát từ khu rừng của bạn
-df = pd.read_csv("heart.csv")
-
-# Chỉ định mục tiêu (Target), biến can thiệp (Treatment) và các thuộc tính nền (Features)
-wf = WhisperForest(
-    data=df,
-    target="target",
-    treatment="statin_treatment",
-    features=["age", "sex", "chol", "thalach", "oldpeak", "ca", "thal", "cp"]
-)
 ```
-
-### Chạy Quy Trình Khám Phá & Huấn Luyện Khép Kín
-```python
-# 1. Huấn luyện tầng dự báo tĩnh
-wf.predictive.fit(model_type="classifier")
-
-# 2. Khám phá DAG nhân quả bằng phương pháp Ensemble (PC + LiNGAM voting)
-discovered_dag = wf.causal.get_dag(method="ensemble", bootstrap_runs=25)
-
-# 3. Khớp hệ phương trình cấu trúc nhân quả (SCM)
-wf.rca.fit_scm()
-```
-
-### Đóng Gói Và Lưu Trữ Động Cơ (H5 & Pickle Hybrid)
-WhisperForest hỗ trợ xuất toàn bộ tri thức của nó ra tệp tin nhị phân. Nếu môi trường thiếu thư viện `h5py`, nó tự động chuyển đổi sang định dạng `Pickle` tương thích ngược:
-```python
-# Lưu lại toàn bộ mô hình dự báo, SCM, DAG và metadata
-wf.save_model("whisper_forest_model.h5")
-
-# Nạp lại mô hình ở bất kỳ máy chủ runtime nào chỉ trong 1 dòng lệnh
-new_wf = WhisperForest(data=df, target="target", treatment="statin_treatment", features=features)
-new_wf.load_model("whisper_forest_model.h5")
-```
-
-### Chạy Thử Nghiệm Quyết Định Kháng Cự Phản Thực Thế (Inference)
-```python
-# Định nghĩa hồ sơ một bệnh nhân có rủi ro cao (chưa được điều trị)
-patient = pd.DataFrame([{
-    "age": 62, "sex": 1, "cp": 2, "trestbps": 140, "chol": 280,
-    "thalach": 130, "exang": 1, "oldpeak": 2.2, "slope": 1, "ca": 2, "thal": 2,
-    "statin_treatment": 0
-}])
-
-# Mô phỏng phản thực tế: Do(statin_treatment = 1) và lan truyền xuôi dòng
-simulated_state = wf.simulate(patient, {"statin_treatment": 1})
-print(simulated_state[["age", "chol", "statin_treatment", "target"]])
-
-# Chẩn đoán nhất quán chéo đa tầng để phát hiện Simpson's Paradox
-consistency = wf.evaluate_causal_consistency(patient, {"statin_treatment": 1})
-print(f"Chỉ số nhất quán: {consistency['Consistency_Score']:.4f}")
-print(f"Trạng thái hệ thống: {consistency['Status']}")
+[ Dữ Liệu Quan Sát / Observational Data ]
+                   │
+                   ▼
+┌──────────────────────────────────────────────┐
+│ 🔍 Tầng Khám Phá (Causal Discovery Layer)    │ ──► Phác thảo DAG nhân quả thông qua
+│    ├─ PC Algorithm (Constraint-based)        │     Ensemble Voting (PC + DirectLiNGAM)
+│    └─ DirectLiNGAM (Functional-based)        │
+└──────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────┐
+│ 🪵 Tầng Cấu Trúc SCM (Structural Layer)       │ ──► Thiết lập hệ phương trình cấu trúc lai
+│    ├─ Pearl's Binary Threshold Abduction     │     để học quy luật vận hành và sai số
+│    └─ Continuous Probability representation  │     ngoại sinh (exogenous noise)
+└──────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────┐
+│ 💊 Tầng Can Thiệp & Dự Báo (Causal & Pred)   │ ──► Tính toán rủi ro dự báo tĩnh P(Y|X)
+│    ├─ CausalForestDML (Double ML)            │     và ước lượng hiệu ứng can thiệp CATE
+│    └─ RandomForest Classifier/Regressor      │
+└──────────────────────────────────────────────┘
+        │                                 │
+        ▼                                 ▼
+┌────────────────────────────────┐ ┌────────────────────────────────┐
+│ 🔍 Tầng Suy Diễn Phản Thực Tế  │ │ ⚖️ Tầng Kiểm Chứng Nhất Quán   │
+│    (Counterfactual & RCA)      │ │    (Causal Consistency Layer)  │
+│    Mô phỏng do(T=t) lan truyền │ │    Đo lường sự bất tương đồng  │
+│    và truy vết nguyên nhân sự  │ │    giữa ba tầng suy luận để    │
+│    cố qua KNN Cohorts (v2)     │ │    phát hiện Simpson's Paradox │
+└────────────────────────────────┘ └────────────────────────────────┘
 ```
 
 ---
 
-## 🌲 Tiêu Chuẩn Đại Ngàn
-*   **Không ồn ào:** Chỉ trích xuất thông tin thực thông qua Stability Selection.
-*   **Bảo toàn cấu trúc:** Mọi can thiệp phản thực tế đều phải tuân thủ nghiêm ngặt quy luật lan truyền topo nhân quả của DAG.
-*   **Hoài nghi khoa học:** Luôn kiểm chứng chéo độ nhất quán trước khi đưa ra quyết định hành động.
-# WhisperForest
+## 🔬 Các Tính Năng Cốt Lõi (Core Features)
+
+### 1. Ensemble Causal Discovery (Khám phá DAG kết hợp)
+*   **Ensemble Voting:** Tích hợp đồng thời thuật toán PC (dựa trên kiểm định độc lập có điều kiện) và DirectLiNGAM (dựa trên phân tích phi Gauss tuyến tính đệ quy).
+*   **Bootstrap Stability Selection:** Chạy mô phỏng bootstrap nhiều lượt để tính toán điểm số tin cậy (Confidence Score) cho từng cạnh, loại bỏ cạnh giả và tự động bẻ gãy các chu kỳ (Cycle Breaking) dựa trên mức độ tương quan.
+
+### 2. Pearl-Compliant SCM Simulation (Mô phỏng cấu trúc lai)
+*   **Threshold Abduction cho biến nhị phân:** Sử dụng thuật toán suy diễn sai số dựa trên ngưỡng xác suất $U_i$ của Pearl để mô phỏng phản thực tế, giúp bảo toàn tính chất logic nhị phân ($0/1$) của các nút trung gian trong đồ thị.
+*   **Continuous Probability cho biến mục tiêu:** Cho phép nút kết quả (`target`) trả về xác suất nguy cơ liên tục ($pred + noise$) thay vì nhãn phân loại cứng, giúp đo lường chính xác các thay đổi rủi ro vi mô dưới tác động can thiệp $do(T = t)$.
+
+### 3. Double Machine Learning (DML) for CATE
+*   Sử dụng **CausalForestDML** (thông qua EconML) để loại bỏ nhiễu hệ thống (Confounding by indication) và ước lượng chính xác tác động can thiệp cá thể hóa (CATE) trên từng đối tượng.
+
+### 4. Causal Consistency Diagnostics (Chẩn đoán nhất quán đa tầng)
+*   Công cụ độc nhất tự động kiểm chuẩn chéo hiệu ứng thu được giữa: **Predictive Layer vs SCM Layer vs DML Layer**.
+*   Tự động phát hiện và cảnh báo trạng thái **Simpson's Paradox / Selection Bias** (`CONFOUNDED TREATMENT SIGNAL DETECTED`) khi mô hình dự báo thông thường và SCM bị che khuất hiệu ứng bởi các biến gây nhiễu mạnh, trong khi DML vẫn bóc tách được tín hiệu can thiệp thực tế.
+
+---
+
+## 🌲 Tiêu Chuẩn Thiết Kế Hệ Thống
+*   **Tính ổn định (Stability):** Chỉ chấp nhận các mối quan hệ nhân quả vượt qua bộ lọc Stability Selection.
+*   **Tính toàn vẹn cấu trúc (Structural Integrity):** Mọi can thiệp phản thực tế phải tuân thủ cơ chế lan truyền topo (Topological Propagation) của DAG để cập nhật các nút con.
+*   **Tính nghiêm ngặt (Verification):** Luôn chẩn đoán nhất quán chéo để phát hiện lỗi ngoại suy và các thiên lệch lựa chọn (selection bias) trong mô hình.
