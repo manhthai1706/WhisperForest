@@ -2,7 +2,7 @@
 
 **WhisperForest** là một thư viện suy luận nhân quả và mô phỏng phản thực tế (Causal AI & Decision Intelligence Engine) được thiết kế nhằm mục đích bóc tách nhiễu loạn và lắng nghe những tín hiệu nhân quả tinh tế ("tiếng thì thầm") bị che khuất bởi các biến gây nhiễu (confounders) trong dữ liệu quan sát.
 
-Khác với các mô hình máy học truyền thống chỉ dừng lại ở việc khai phá mối quan hệ tương quan ($P(Y|X)$), WhisperForest cung cấp một pipeline khép kín từ khám phá đồ thị nhân quả (Causal Discovery), ước lượng tác động can thiệp (CATE), mô phỏng phản thực tế ($P(Y|do(T))$) cho đến truy vết nguyên nhân gốc rễ (Root Cause Analysis - RCA).
+Khác với các mô hình máy học truyền thống chỉ dừng lại ở việc khai phá mối quan hệ tương quan (P(Y|X)), WhisperForest cung cấp một pipeline khép kín từ khám phá đồ thị nhân quả (Causal Discovery), ước lượng tác động can thiệp (CATE), mô phỏng phản thực tế (P(Y|do(T))) cho đến truy vết nguyên nhân gốc rễ (Root Cause Analysis - RCA).
 
 ---
 
@@ -53,8 +53,8 @@ Hệ thống được thiết kế dạng phân tầng mô-đun hóa, chia sẻ 
 *   **Bootstrap Stability Selection:** Chạy mô phỏng bootstrap nhiều lượt để tính toán điểm số tin cậy (Confidence Score) cho từng cạnh, loại bỏ cạnh giả và tự động bẻ gãy các chu kỳ (Cycle Breaking) dựa trên mức độ tương quan.
 
 ### 2. Pearl-Compliant SCM Simulation (Mô phỏng cấu trúc lai)
-*   **Threshold Abduction cho biến nhị phân:** Sử dụng thuật toán suy diễn sai số dựa trên ngưỡng xác suất $U_i$ của Pearl để mô phỏng phản thực tế, giúp bảo toàn tính chất logic nhị phân ($0/1$) của các nút trung gian trong đồ thị.
-*   **Continuous Probability cho biến mục tiêu:** Cho phép nút kết quả (`target`) trả về xác suất nguy cơ liên tục ($pred + noise$) thay vì nhãn phân loại cứng, giúp đo lường chính xác các thay đổi rủi ro vi mô dưới tác động can thiệp $do(T = t)$.
+*   **Threshold Abduction cho biến nhị phân:** Sử dụng thuật toán suy diễn sai số dựa trên ngưỡng xác suất U_i của Pearl để mô phỏng phản thực tế, giúp bảo toàn tính chất logic nhị phân (0/1) của các nút trung gian trong đồ thị.
+*   **Continuous Probability cho biến mục tiêu:** Cho phép nút kết quả (`target`) trả về xác suất nguy cơ liên tục (pred + noise) thay vì nhãn phân loại cứng, giúp đo lường chính xác các thay đổi rủi ro vi mô dưới tác động can thiệp do(T = t).
 
 ### 3. Double Machine Learning (DML) for CATE
 *   Sử dụng **CausalForestDML** (thông qua EconML) để loại bỏ nhiễu hệ thống (Confounding by indication) và ước lượng chính xác tác động can thiệp cá thể hóa (CATE) trên từng đối tượng.
