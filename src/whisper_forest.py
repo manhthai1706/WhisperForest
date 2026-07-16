@@ -245,6 +245,28 @@ class WhisperForest:
             return float(diff.iloc[0])
         return diff
 
+    def simulate_mixture(self, patient: pd.DataFrame, interventions: Dict[str, float]) -> pd.DataFrame:
+        """
+        Simulates the counterfactual state under interventions using the Mixture of SCMs (MoSCM).
+        """
+        if not self.rca.mixture_engine.is_fitted:
+            self.rca.fit_mixture_scm()
+        return self.rca.mixture_engine.simulate(patient, interventions)
+
+    def do_mixture(self, patient: pd.DataFrame, interventions: Dict[str, float]) -> pd.DataFrame:
+        """
+        Alias for simulate_mixture(), executing a do-intervention under a Mixture of SCMs.
+        """
+        return self.simulate_mixture(patient, interventions)
+
+    def counterfactual_mixture(self, patient: pd.DataFrame, interventions: Dict[str, float]) -> Union[float, pd.Series]:
+        """
+        Computes the counterfactual risk difference (Y_simulated - Y_original) using the Mixture of SCMs.
+        """
+        if not self.rca.mixture_engine.is_fitted:
+            self.rca.fit_mixture_scm()
+        return self.rca.mixture_engine.counterfactual(patient, interventions)
+
     def evaluate_causal_consistency(self, patient: pd.DataFrame, interventions: Dict[str, float]) -> Dict[str, Union[float, str]]:
         """
         Evaluates the consistency of treatment effect estimates across the three layers:
@@ -322,6 +344,12 @@ class WhisperForest:
             "Consistency_Score": float(consistency_score),
             "Status": status
         }
+
+    def audit_consistency(self, patient: pd.DataFrame, interventions: Dict[str, float], threshold_conflict: float = 0.01) -> Dict:
+        """
+        Runs the Causal Auditor to inspect predictive, SCM, and DML layer consistency.
+        """
+        return self.causal.audit_consistency(patient, interventions, threshold_conflict=threshold_conflict)
 
 
 
