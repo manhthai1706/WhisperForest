@@ -2,37 +2,39 @@
 WhisperForest: Causal Decision Intelligence Engine
 ===================================================
 
-Luồng hoạt động 4 nhánh:
+Kiến trúc đa tầng (Multi-tier Reasoning):
 
-  ┌─────────────────────────────────────────────────────────────┐
-  │  NHÁNH 1 — Predictive                                       │
-  │  Học dự đoán / phân loại từ dữ liệu quan sát               │
-  │  RandomForest Classifier/Regressor                          │
-  └─────────────────────────┬───────────────────────────────────┘
-                            │ (Phát hiện nguy cơ / bất thường)
-                            ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │  NHÁNH 2 — Causal Discovery + RCA                           │
-  │  Xây dựng đồ thị nhân quả DAG toàn cục                      │
-  │  RCA phân bổ nguyên nhân theo từng dòng dữ liệu            │
-  └─────────────────────────┬───────────────────────────────────┘
-                            │ (Danh sách nguyên nhân gốc)
-                            ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │  NHÁNH 3 — SCM / MoSCM + Counterfactual + Policy           │
-  │  ├─ EM-MoSCM phân cụm cơ chế nhân quả tiềm ẩn              │
-  │  ├─ Counterfactual: mô phỏng trạng thái đích                │
-  │  │   (Abduction → Intervention → Propagation)               │
-  │  └─ Policy: ghi nhận thử nghiệm → đúc kết chính sách       │
-  └─────────────────────────┬───────────────────────────────────┘
-                            │ (Kết quả mô phỏng)
-                            ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │  NHÁNH 4 — Causal Auditor                                   │
-  │  Kiểm chứng & biểu quyết nhất quán giữa các tầng           │
-  │  Phát hiện: Simpson's Paradox | Xung đột hướng             │
-  │  Gán nhãn: SAFE / CAUTION / UNSAFE                          │
-  └─────────────────────────────────────────────────────────────┘
+                    Data
+                      |
+        ┌─────────────┴─────────────┐
+        │                           │
+        ▼                           ▼
+  Predictive Branch          Causal Discovery
+  (RandomForest)              DAG Learning
+        │                           │
+        └─────────────┬─────────────┘
+                      ▼
+               WhisperTrace RCA
+                      |
+         Per-patient Causal Trace
+                      |
+                      ▼
+          CATE + Intervention Effects
+                      |
+                      ▼
+      Knowledge / Experience Memory
+                      |
+                      ▼
+      SCM Reasoning Engine (multi-hypothesis)
+                      |
+          ┌───────────┴────────────┐
+          ▼                        ▼
+ Counterfactual Simulation    Policy Generator
+          │                        │
+          └───────────┬────────────┘
+                      ▼
+             Causal Auditor
+          (Consistency Voting)
 """
 
 import pandas as pd
@@ -44,17 +46,22 @@ from .predictive import PredictiveBranch
 from .rca import RCABranch
 from .policy import PolicyBranch
 from .optimization import OptimizationBranch
+from .memory import KnowledgeMemory, CausalTrace, InterventionRecord
+from .memory.reasoner import SCMReasoner
 
 
 class WhisperForest:
     """
-    Causal Decision Intelligence Engine.
+    Causal Decision Intelligence Engine — Multi-tier Reasoning.
 
-    Tích hợp 4 nhánh suy luận nhân quả:
-      1. Predictive  — học dự đoán / phân loại
-      2. Causal+RCA  — khám phá DAG + truy vết nguyên nhân
-      3. SCM/MoSCM   — mô phỏng nhân quả + counterfactual + policy memory
-      4. Auditor     — kiểm chứng nhất quán & biểu quyết
+    Tích hợp 6 tầng suy luận nhân quả:
+      1. Predictive    — học dự đoán / phân loại
+      2. Causal+RCA    — khám phá DAG + truy vết nguyên nhân
+      3. CATE          — ước lượng hiệu quả can thiệp từng biến
+      4. Memory        — Knowledge / Experience Memory (lưu causal traces)
+      5. SCM Reasoner  — sinh đa giả thuyết can thiệp, simulate, vote
+      6. Policy        — đúc kết chính sách từ full reasoning chain
+      7. Auditor       — kiểm chứng nhất quán & biểu quyết
 
     Sử dụng cơ bản:
     ---------------
@@ -71,6 +78,9 @@ class WhisperForest:
         # Nhánh 3: Mô phỏng nhân quả
         wf.rca.fit_scm()
         cf = wf.counterfactual(patient, outcome=0)
+
+        # Nhánh 3 mở rộng: Multi-hypothesis reasoning
+        plans, trace = wf.reason(rca_report=rca, patient=patient, cate_series=...)
 
         # Nhánh 4: Kiểm chứng nhất quán
         report = wf.audit_consistency(patient)
@@ -107,13 +117,20 @@ class WhisperForest:
         else:
             self.features = features
 
-        # ── Khởi tạo 4 nhánh ──────────────────────────────────────────────
-        self.causal = CausalBranch(self)        # Nhánh 1+2: Discovery + Estimation
-        self.predictive = PredictiveBranch(self) # Nhánh 1: Predictive
-        self.rca = RCABranch(self)              # Nhánh 2+3: RCA + SCM/MoSCM
+        # ── Khởi tạo nhánh ────────────────────────────────────────────────
+        self.causal = CausalBranch(self)        # Discovery + Estimation
+        self.predictive = PredictiveBranch(self) # Predictive
+        self.rca = RCABranch(self)              # RCA + SCM/MoSCM
         self.trace = self.rca                   # alias: wf.trace = wf.rca
-        self.policy = PolicyBranch(self)        # Nhánh 3: Policy Memory
-        self.optimization = OptimizationBranch(self)  # Nhánh 3: Counterfactual
+        self.optimization = OptimizationBranch(self)  # Counterfactual
+
+        # ── Memory & Reasoning ────────────────────────────────────────────
+        self.memory = KnowledgeMemory()
+        self.reasoner = SCMReasoner(self, self.memory)
+
+        # ── Policy (kết nối với memory) ───────────────────────────────────
+        self.policy = PolicyBranch(self)
+        self.policy.set_memory(self.memory)
 
     # ══════════════════════════════════════════════════════════════════════
     #  NHÁNH 3 — SCM Propagation (core simulation engine)
@@ -234,6 +251,112 @@ class WhisperForest:
         )
 
     # ══════════════════════════════════════════════════════════════════════
+    #  NHÁNH 3 — Multi-hypothesis Reasoning Engine
+    # ══════════════════════════════════════════════════════════════════════
+
+    def reason(
+        self,
+        rca_report: pd.DataFrame,
+        patient: pd.DataFrame,
+        cate_series: Optional[pd.Series] = None,
+        n_plans: int = 8,
+    ):
+        """
+        [Nhánh 5 — Reasoner] Sinh và đánh giá nhiều phương án can thiệp.
+
+        Quy trình 5 bước:
+          1. Case Retrieval — tra Knowledge Memory tìm ca có causal profile tương tự.
+          2. Hypothesis Generation — sinh đa giả thuyết (RCA-driven, Combined, Knowledge-guided).
+          3. Counterfactual Simulation — mô phỏng từng giả thuyết qua SCM.
+          4. Plan Ranking — xếp hạng theo delta outcome.
+          5. Policy Recommendation — đề xuất từ kinh nghiệm lịch sử.
+
+        Parameters
+        ----------
+        rca_report  : DataFrame với cột Attribution_Mean từ wf.rca.analyze_anomaly().
+        patient     : DataFrame 1 dòng của bệnh nhân.
+        cate_series : Series CATE cho từng feature (tuỳ chọn).
+        n_plans     : Số candidate plans tối đa.
+
+        Returns
+        -------
+        Tuple[ranked_results, trace, recommendations]
+            ranked_results : List[Tuple[Hypothesis, InterventionRecord]] — giả thuyết + kết quả.
+            trace          : CausalTrace — hồ sơ causal của patient.
+            recommendations: List[Tuple[plan, score]] — policy đề xuất.
+        """
+        if cate_series is None:
+            cate_series = pd.Series(0.0, index=self.features)
+
+        ranked_results, trace = self.reasoner.reason_from_patient(
+            patient_df=patient,
+            rca_report=rca_report,
+            cate_series=cate_series,
+            dag_edges=self.causal.get_dag(),
+            n_plans=n_plans,
+        )
+
+        recommendations = self.policy.recommend_from_trace(trace)
+
+        return ranked_results, trace, recommendations
+
+    def counterfactual_trace(
+        self,
+        patient_df: pd.DataFrame,
+        outcome: int = 0,
+        k_neighbors: int = 5,
+        top_k_causes: int = 3,
+    ) -> CausalTrace:
+        """
+        [Nhánh 3 — Trace] Như counterfactual() nhưng trả về CausalTrace.
+
+        Lưu trace vào Knowledge Memory để dùng cho reasoning sau này.
+        """
+        cf_table = self.counterfactual(
+            patient_df=patient_df,
+            outcome=outcome,
+            k_neighbors=k_neighbors,
+            top_k_causes=top_k_causes,
+        )
+
+        rca_report = self.rca.analyze_anomaly(
+            anomaly_data=patient_df,
+            baseline_data=self.data[self.data[self.target] == outcome],
+            causal_graph=self.causal.get_dag(),
+            method="intervention",
+            k_neighbors=k_neighbors,
+        )
+
+        trace = CausalTrace(
+            features=patient_df.iloc[0],
+            target=self.target,
+            target_value=float(patient_df[self.target].iloc[0]) if self.target in patient_df else 0.0,
+            rca_scores=rca_report["Attribution_Mean"] if "Attribution_Mean" in rca_report.columns else rca_report.iloc[:, 0],
+            cate_estimates=pd.Series(0.0, index=self.features),
+            dag_edges=self.causal.get_dag(),
+        )
+
+        intervened_features = cf_table.index[cf_table["Intervened"]].tolist()
+        interventions = {
+            feat: float(cf_table.loc[feat, "Counterfactual"])
+            for feat in intervened_features
+        }
+        simulated_outcome = float(cf_table.loc[self.target, "Counterfactual"]) if self.target in cf_table.index else 0.0
+        original_outcome = float(cf_table.loc[self.target, "Original"]) if self.target in cf_table.index else 0.0
+        delta = simulated_outcome - original_outcome
+        success = delta < 0
+
+        trace.interventions_tried.append(InterventionRecord(
+            plan=interventions,
+            simulated_outcome=simulated_outcome,
+            delta=delta,
+            success=success,
+        ))
+
+        self.memory.store(trace)
+        return trace
+
+    # ══════════════════════════════════════════════════════════════════════
     #  NHÁNH 4 — Causal Auditor
     # ══════════════════════════════════════════════════════════════════════
 
@@ -241,32 +364,26 @@ class WhisperForest:
         self,
         patient: pd.DataFrame,
         interventions: Dict[str, float] = None,
-        threshold_conflict: float = 0.01
+        threshold_conflict: float = 0.01,
+        rca_report: Optional[pd.DataFrame] = None,
     ) -> Dict:
         """
         [Nhánh 4 — Auditor] Kiểm chứng nhất quán giữa các tầng suy luận.
 
-        So sánh chéo hiệu ứng của cùng một can thiệp (hoặc cùng một bệnh nhân)
-        giữa Predictive Layer, SCM/MoSCM Layer, và DML Layer.
-
-        Phát hiện:
-          - Simpson's Paradox / Confounding by Indication
-          - Directional Conflict (SCM vs DML mâu thuẫn hướng)
-          - Predictive / SCM Divergence (khi không có treatment)
-
-        Gán nhãn: SAFE / CAUTION / UNSAFE / HIGH BIAS
+        Voting layers: Predictive, SCM, DML, RCA.
 
         Parameters
         ----------
         patient       : DataFrame bệnh nhân.
-        interventions : Dict biến can thiệp {treatment: value}.
-                        Tuỳ chọn — nếu không có treatment thì bỏ qua DML.
+        interventions : Dict biến can thiệp {feature: value}.
+        rca_report    : DataFrame RCA từ wf.rca.analyze_anomaly() — tham gia voting.
         threshold_conflict : ngưỡng chênh lệch để kích hoạt cảnh báo.
         """
         return self.causal.audit_consistency(
             patient,
             interventions or {},
-            threshold_conflict=threshold_conflict
+            threshold_conflict=threshold_conflict,
+            rca_report=rca_report,
         )
 
     # ══════════════════════════════════════════════════════════════════════

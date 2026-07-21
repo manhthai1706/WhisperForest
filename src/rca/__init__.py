@@ -21,17 +21,19 @@ class RCABranch:
         """
         self.mixture_engine.fit(n_clusters=n_clusters, n_iterations=n_iterations)
 
-    def analyze_anomaly(self, anomaly_data, baseline_data, causal_graph=None, method="intervention", k_neighbors=10):
+    def analyze_anomaly(self, anomaly_data, baseline_data, causal_graph=None, method="graph", k_neighbors=10):
         """
-        Perform Root Cause Analysis on an anomaly dataset compared to baseline data.
+        Root Cause Analysis theo ca — độc lập SCM khi dùng method='graph'.
+
+        method='graph'  : World DAG + lệch cohort (mặc định, không cần fit_scm).
+        method='intervention' / 'structural' / 'noise' : cần fit_scm() trước.
         """
-        if not self.engine.is_fitted:
-            self.fit_scm()
-            
         if causal_graph is None:
             causal_graph = self.parent.causal.get_dag()
-            
-        return self.attributor.attribute(anomaly_data, baseline_data, causal_graph, method=method, k_neighbors=k_neighbors)
+
+        return self.attributor.attribute(
+            anomaly_data, baseline_data, causal_graph, method=method, k_neighbors=k_neighbors
+        )
 
 
 

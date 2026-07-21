@@ -18,13 +18,13 @@ class Attributor:
         anomaly_data: pd.DataFrame, 
         baseline_data: pd.DataFrame, 
         causal_graph: List[Tuple[str, str]], 
-        method: str = "intervention",
+        method: str = "graph",
         k_neighbors: int = 10
     ) -> pd.DataFrame:
         """
         Attributes the difference in target variable (Y) between anomaly_data and baseline_data
         to the causal variables using a Cohort-based Reference Baseline (KNN).
-        
+
         Parameters:
         -----------
         anomaly_data : pd.DataFrame
@@ -34,12 +34,19 @@ class Attributor:
         causal_graph : List[Tuple[str, str]]
             The causal DAG.
         method : str
-            The attribution method: 'intervention' (default) or 'noise'.
+            'graph' (default) — World DAG + cohort deviation, không cần SCM.
+            'intervention' / 'structural' — attribution qua SCM (cần fit_scm trước).
+            'noise' — noise-based attribution qua SCM.
         k_neighbors : int
             Number of nearest healthy neighbors to select as the reference cohort.
         """
-        engine = self.branch.engine
         target = self.parent.target
+        scm_methods = {"intervention", "structural", "noise"}
+        if method.lower() in scm_methods and not self.branch.engine.is_fitted:
+            raise ValueError(
+                f"Method '{method}' requires fitted SCM. Call wf.rca.fit_scm() first, "
+                "or use method='graph' for DAG-only RCA."
+            )
         
         anomaly_row = anomaly_data.mean().to_frame().T if len(anomaly_data) > 1 else anomaly_data.copy()
         
@@ -85,6 +92,29 @@ class Attributor:
         report_df = report_df.sort_values(by="Attribution_Mean", key=abs, ascending=False)
         return report_df
 
+    def _attribute_graph_single(
+        self,
+        anomaly_row: pd.DataFrame,
+        baseline_row: pd.DataFrame,
+        causal_graph: List[Tuple[str, str]],
+    ) -> pd.Series:
+        target = self.parent.target
+        anomaly_vals = anomaly_row.iloc[0]
+        baseline_vals = baseline_row.iloc[0]
+
+        attributions = {}
+        for node in self.parent.features:
+            if node == target:
+                continue
+            paths = self._find_causal_paths(node, target, causal_graph)
+            if not paths:
+                continue
+            path_weight = min(len(paths), 3) / 3.0
+            delta = float(anomaly_vals.get(node, 0.0)) - float(baseline_vals.get(node, 0.0))
+            attributions[node] = delta * (1.0 + path_weight)
+
+        return pd.Series(attributions)
+
     def _attribute_single_baseline(
         self, 
         anomaly_row: pd.DataFrame, 
@@ -95,6 +125,9 @@ class Attributor:
         """
         Calculates attribution score against a single baseline patient.
         """
+        if method.lower() in ("graph", "dag"):
+            return self._attribute_graph_single(anomaly_row, baseline_row, causal_graph)
+
         engine = self.branch.engine
         target = self.parent.target
         
@@ -108,7 +141,7 @@ class Attributor:
         
         from sklearn.ensemble import RandomForestClassifier
         
-        if method.lower() == "intervention":
+        if method.lower() in ("intervention", "structural"):
             attributions = {}
             y_baseline = baseline_row[target].iloc[0]
             

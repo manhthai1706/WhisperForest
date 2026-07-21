@@ -8,14 +8,19 @@ class CausalAuditor:
         self.branch = branch
         self.parent = branch.parent
 
-    def audit(self, patient: pd.DataFrame, interventions: Dict[str, float] = None, threshold_conflict: float = 0.01) -> Dict:
+    def audit(
+        self,
+        patient: pd.DataFrame,
+        interventions: Dict[str, float] = None,
+        threshold_conflict: float = 0.01,
+        rca_report: Optional[pd.DataFrame] = None,
+    ) -> Dict:
         """
         Audits the causal estimation across the reasoning layers.
 
-        - If a treatment variable is defined and included in interventions:
-            Compares Predictive, SCM, and DML effects → full 3-layer audit.
-        - If no treatment variable (pure observational data):
-            Compares Predictive vs SCM only → 2-layer audit.
+        Voting layers:
+          - Predictive, SCM, DML (when treatment available)
+          - RCA (when rca_report provided): target alignment + direction agreement
         """
         treatment = self.parent.treatment
         target = self.parent.target
@@ -78,19 +83,79 @@ class CausalAuditor:
             cate_val = cate_df["CATE"].iloc[0]
             e_dml = float(cate_val if val_treated == 1 else -cate_val)
 
-        # ─── 4. Consistency Score ────────────────────────────────────────────
+        # ─── 4. RCA Layer (voting) ───────────────────────────────────────────
+        rca_top_cause = None
+        rca_alignment = None
+        rca_direction = None
+        rca_vote = None
+        rca_effect = None
+
+        if rca_report is not None and not rca_report.empty:
+            sorted_rca = rca_report.sort_values("Attribution_Mean", key=abs, ascending=False)
+            rca_top_cause = sorted_rca.index[0]
+            top_k = sorted_rca.head(3).index.tolist()
+            intervention_feats = list(interventions.keys())
+
+            if intervention_feats:
+                overlap = len(set(top_k) & set(intervention_feats))
+                rca_alignment = overlap / len(intervention_feats)
+            else:
+                model = self.parent.predictive.modeling.model
+                if model is not None and hasattr(model, "feature_importances_"):
+                    importances = pd.Series(
+                        model.feature_importances_, index=self.parent.features
+                    )
+                    pred_top = importances.idxmax()
+                    rca_alignment = 1.0 if pred_top == rca_top_cause else 0.0
+
+            direction_scores = []
+            for feat in intervention_feats:
+                if feat not in rca_report.index or feat not in patient.columns:
+                    continue
+                rca_val = float(rca_report.loc[feat, "Attribution_Mean"])
+                patient_val = float(patient[feat].iloc[0])
+                target_val = float(interventions[feat])
+                deviation = patient_val - target_val
+                if abs(deviation) < 1e-9:
+                    continue
+                agrees = (np.sign(rca_val) == np.sign(deviation)) or abs(rca_val) < threshold_conflict
+                direction_scores.append(1.0 if agrees else 0.0)
+            if direction_scores:
+                rca_direction = float(np.mean(direction_scores))
+
+            if treatment and treatment in rca_report.index:
+                rca_effect = float(rca_report.loc[treatment, "Attribution_Mean"])
+
+            vote_parts = []
+            if rca_alignment is not None:
+                vote_parts.append(rca_alignment)
+            if rca_direction is not None:
+                vote_parts.append(rca_direction)
+            elif rca_effect is not None:
+                ref_effect = e_dml if e_dml is not None else (e_scm if has_treatment else None)
+                if ref_effect is not None and abs(ref_effect) > threshold_conflict and abs(rca_effect) > threshold_conflict:
+                    vote_parts.append(1.0 if np.sign(rca_effect) == np.sign(ref_effect) else 0.0)
+            if vote_parts:
+                rca_vote = float(np.mean(vote_parts))
+
+        # ─── 5. Consistency Score ────────────────────────────────────────────
         effects = [e_pred, e_scm]
         if e_dml is not None:
             effects.append(e_dml)
 
         mean_abs = np.mean([abs(x) for x in effects])
         if mean_abs < 1e-3:
-            consistency_score = 1.0
+            effect_consistency = 1.0
         else:
             std_dev = np.std(effects)
-            consistency_score = max(0.0, 1.0 - (std_dev / (mean_abs + 1e-5)))
+            effect_consistency = max(0.0, 1.0 - (std_dev / (mean_abs + 1e-5)))
 
-        # ─── 5. Diagnosis ─────────────────────────────────────────────────────
+        vote_scores = [effect_consistency]
+        if rca_vote is not None:
+            vote_scores.append(rca_vote)
+        consistency_score = float(np.mean(vote_scores))
+
+        # ─── 6. Diagnosis ─────────────────────────────────────────────────────
         warnings = []
         diagnoses = []
 
@@ -119,7 +184,22 @@ class CausalAuditor:
                     "The causal DAG may not fully explain the predictive model's learned associations."
                 )
 
-        # ─── 6. Safety Status ─────────────────────────────────────────────────
+        if rca_vote is not None and rca_vote < 0.5:
+            warnings.append("RCA LAYER CONFLICT")
+            top_label = rca_top_cause or "unknown"
+            if interventions:
+                diagnoses.append(
+                    f"RCA top cause ({top_label}) disagrees with intervention plan "
+                    f"(alignment={rca_alignment:.2f}, direction={rca_direction})."
+                    if rca_direction is not None and rca_alignment is not None
+                    else f"RCA top cause ({top_label}) disagrees with intervention plan."
+                )
+            else:
+                diagnoses.append(
+                    f"RCA top cause ({top_label}) disagrees with predictive model drivers."
+                )
+
+        # ─── 7. Safety Status ─────────────────────────────────────────────────
         if consistency_score >= 0.75 and len(warnings) == 0:
             status = "SAFE (All reasoning layers agree on direction and magnitude)"
         elif consistency_score >= 0.40 and len(warnings) == 0:
@@ -132,6 +212,12 @@ class CausalAuditor:
             "SCM_Effect": float(e_scm),
             "SCM_Mixture_Effect": e_scm_mix,
             "DML_Effect": e_dml,
+            "RCA_Top_Cause": rca_top_cause,
+            "RCA_Effect": rca_effect,
+            "RCA_Alignment": rca_alignment,
+            "RCA_Direction": rca_direction,
+            "RCA_Vote": rca_vote,
+            "Effect_Consistency": float(effect_consistency),
             "Has_Treatment": has_treatment,
             "Consistency_Score": float(consistency_score),
             "Safety_Status": status,
@@ -164,8 +250,22 @@ class CausalAuditor:
                 lines.append(f"MoSCM Expert Risk Score:       {report['SCM_Mixture_Effect']:.4f}")
             lines.append("(No treatment variable — DML layer skipped)")
 
+        if report.get("RCA_Top_Cause") is not None:
+            lines.append("-" * 65)
+            lines.append(f"RCA Top Cause:                 {report['RCA_Top_Cause']}")
+            if report.get("RCA_Effect") is not None:
+                lines.append(f"RCA Layer Effect:              {report['RCA_Effect']:+.4f}")
+            if report.get("RCA_Alignment") is not None:
+                lines.append(f"RCA Target Alignment:          {report['RCA_Alignment']:.4f}")
+            if report.get("RCA_Direction") is not None:
+                lines.append(f"RCA Direction Agreement:       {report['RCA_Direction']:.4f}")
+            if report.get("RCA_Vote") is not None:
+                lines.append(f"RCA Vote Score:                {report['RCA_Vote']:.4f}")
+
         lines.append("-" * 65)
-        lines.append(f"Consistency Score:             {report['Consistency_Score']:.4f}")
+        if report.get("Effect_Consistency") is not None:
+            lines.append(f"Effect Layer Consistency:      {report['Effect_Consistency']:.4f}")
+        lines.append(f"Overall Consistency Score:     {report['Consistency_Score']:.4f}")
         lines.append(f"Safety Status:                 {report['Safety_Status']}")
         lines.append("-" * 65)
 

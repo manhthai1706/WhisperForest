@@ -9,6 +9,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from src.whisper_forest import WhisperForest
+from src.policy import PolicyBranch
 
 SEPARATOR = "=" * 70
 
@@ -93,7 +94,7 @@ def run():
         print(f"       ... ({len(dag) - 8} more)")
 
     print("\n[2b] Root Cause Analysis trên một ca bất thường...")
-    wf.rca.fit_scm()
+    print("     (World DAG + cohort deviation — không cần SCM)")
 
     sick_cohort    = df[df[target] == 1]
     healthy_cohort = df[df[target] == 0]
@@ -109,7 +110,7 @@ def run():
         anomaly_data=anomaly,
         baseline_data=baseline,
         causal_graph=dag,
-        method="intervention"
+        method="graph",
     )
 
     print("\n     Top contributing root causes:")
@@ -125,6 +126,8 @@ def run():
 
     print("\n[3a] Counterfactual: Trạng thái phản thực tế của ca bất thường")
     print("     (Nếu bệnh nhân này ở trạng thái không bệnh, các chỉ số sẽ thế nào?)\n")
+
+    wf.rca.fit_scm()
 
     cf_table = wf.counterfactual(
         patient_df=anomaly.reset_index(drop=True),
@@ -182,21 +185,86 @@ def run():
 
     audit_report = wf.audit_consistency(
         patient=anomaly.reset_index(drop=True),
-        threshold_conflict=0.05
+        threshold_conflict=0.05,
+        rca_report=rca_report,
     )
     print()
     print(wf.causal.auditor.format_report(audit_report))
 
     # ══════════════════════════════════════════════════════════════════════
     print(f"\n{SEPARATOR}")
+    print(" NHÁNH 5 — Multi-Hypothesis Reasoning + Causal Experience Bank".center(70))
+    print(SEPARATOR)
+
+    print("\n[5a] Causal Experience Bank: Lưu causal traces từ các ca đã phân tích...")
+    for i in range(len(sick_sample)):
+        patient_row = sick_sample.iloc[[i]].copy()
+        try:
+            trace = wf.counterfactual_trace(
+                patient_df=patient_row,
+                outcome=0,
+                k_neighbors=5,
+                top_k_causes=3,
+            )
+        except Exception:
+            pass
+
+    print(f"     Experience Bank: {len(wf.memory)} causal traces stored.")
+
+    print("\n[5b] Multi-Hypothesis Reasoning Pipeline trên ca bất thường...\n")
+
+    # Step 1: Case Retrieval
+    print("   Bước 1 — Case Retrieval: Tra Experience Memory...")
+    query_trace = wf.memory.traces[0] if wf.memory.traces else None
+    if query_trace is not None:
+        similar = wf.reasoner.retrieve_similar_cases(query_trace, k=3)
+        print(f"     Tìm thấy {len(similar)} ca có causal profile tương tự.")
+        for i, (case, dist) in enumerate(similar, 1):
+            print(f"       #{i}: top_causes={case.top_causes(k=3)} (dist={dist:.3f})")
+
+    # Step 2-4: Hypothesis Generation → Simulation → Ranking
+    print("\n   Bước 2 — Hypothesis Generation: Sinh đa giả thuyết can thiệp...")
+    print("   Bước 3 — Counterfactual Simulation: Mô phỏng từng giả thuyết qua SCM...")
+    print("   Bước 4 — Plan Ranking: Xếp hạng theo delta outcome.\n")
+
+    ranked_results, trace, recommendations = wf.reason(
+        rca_report=rca_report,
+        patient=anomaly.reset_index(drop=True),
+        cate_series=pd.Series(0.0, index=features),
+        n_plans=6,
+    )
+
+    print(f"     {'#':<4} {'Source':<18} {'Intervention Plan':<45} {'Delta':>10} {'Status':>8}")
+    print("     " + "-" * 89)
+    for i, (hyp, rec) in enumerate(ranked_results, 1):
+        plan_str = ", ".join(f"{k}={v:.1f}" for k, v in rec.plan.items())
+        status = "✓" if rec.success else "✗"
+        print(f"     #{i:<3} {hyp.source:<18} {plan_str:<45} {rec.delta:>+10.4f} {status:>8}")
+
+    print("\n   Chi tiết giả thuyết:")
+    for i, (hyp, rec) in enumerate(ranked_results, 1):
+        print(f"     Hypothesis #{i}:")
+        print(f"       {hyp.rationale}")
+
+    print("\n   Bước 5 — Policy Recommendation từ Causal Experience Bank...")
+    rec_text = PolicyBranch.format_recommendations(recommendations, top_k=3)
+    print(rec_text)
+
+    # ══════════════════════════════════════════════════════════════════════
+    print(f"\n{SEPARATOR}")
     print(" Tổng kết".center(70))
     print(SEPARATOR)
-    print(f"  Nhánh 1 — Predictive  : Accuracy={acc:.3f}, AUC={auc:.3f}")
-    print(f"  Nhánh 2 — DAG edges   : {len(dag)}")
-    print(f"  Nhánh 2 — Top cause   : {top5.index[0]} (attr={top5['Attribution_Mean'].iloc[0]:+.4f})")
-    print(f"  Nhánh 3 — CF delta    : target Δ={cf_table.loc[target, 'Delta']:+.4f}" if target in cf_table.index else "")
-    print(f"  Nhánh 3 — Policy log  : {len(wf.policy.experiment_log)} experiments")
-    print(f"  Nhánh 4 — Safety      : {audit_report['Safety_Status']}")
+    print(f"  Nhánh 1 — Predictive          : Accuracy={acc:.3f}, AUC={auc:.3f}")
+    print(f"  Nhánh 2 — DAG edges           : {len(dag)}")
+    print(f"  Nhánh 2 — Top cause           : {top5.index[0]} (attr={top5['Attribution_Mean'].iloc[0]:+.4f})")
+    print(f"  Nhánh 3 — CF delta            : target Δ={cf_table.loc[target, 'Delta']:+.4f}" if target in cf_table.index else "")
+    print(f"  Nhánh 3 — Policy log          : {len(wf.policy.experiment_log)} experiments")
+    print(f"  Nhánh 4 — Safety              : {audit_report['Safety_Status']}")
+    print(f"  Nhánh 5 — Experience traces   : {len(wf.memory)}")
+    print(f"  Nhánh 5 — Hypotheses evaluated: {len(ranked_results)}")
+    if recommendations:
+        best_plan = ", ".join(f"{k}={v:.1f}" for k, v in recommendations[0][0].items())
+        print(f"  Nhánh 5 — Best recommendation: {best_plan} (score={recommendations[0][1]:.3f})")
     print(f"\n{SEPARATOR}")
     print(" Pipeline completed successfully.".center(70))
     print(SEPARATOR)

@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperForest — Causal Decision Intelligence Engine</title>
+<style>
+  :root {
+    --bg: #0f1a14;
+    --bg2: #162822;
+    --bg3: #1d352c;
+    --border: #2a4a3a;
+    --accent: #3dd68c;
+    --accent-dim: #2a9d6e;
+    --gold: #f0c040;
+    --red: #e06050;
+    --orange: #e89040;
+    --text: #d0e0d8;
+    --text-dim: #7a9a8a;
+    --text-bright: #f0fff8;
+    --node-w: 190px;
+    --node-h: 56px;
+    --radius: 8px;
+    --panel-w: 300px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh; overflow: hidden;
+  }
+
+  /* ─── Layout ─── */
+  .app { display: flex; height: 100vh; }
+
+  /* ─── Left Panel (Input) ─── */
+  .panel-left {
+    width: var(--panel-w);
+    min-width: var(--panel-w);
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel-left .header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-left .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+  }
+  .form-group {
+    margin-bottom: 6px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 1px;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 5px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-bright);
+    font-size: 12px;
+    outline: none;
+    transition: .2s;
+  }
+  .form-group input:focus { border-color: var(--accent-dim); }
+
+  .panel-left .footer {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+  }
+
+  /* ─── Center (Tree) ─── */
+  .panel-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+  .center-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+  }
+  .center-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .tree-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+  }
+  .tree {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    gap: 1px;
+  }
+  .tree-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 22px;
+    position: relative;
+  }
+
+  .node {
+    width: var(--node-w);
+    min-height: var(--node-h);
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all .4s ease;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    opacity: .35;
+  }
+  .node.visible { opacity: 1; }
+  .node:hover {
+    background: var(--bg3);
+    border-color: var(--accent-dim);
+    transform: translateY(-1px);
+  }
+  .node.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(61,214,140,.15);
+    transform: translateY(-2px);
+  }
+  .node.done {
+    border-color: var(--accent-dim);
+    opacity: 1;
+  }
+  .node.colspan { width: calc(var(--node-w) * 2 + 22px); }
+
+  .node-icon { font-size: 14px; margin-right: 6px; }
+  .node-label { font-size: 12px; font-weight: 600; color: var(--text-bright); line-height: 1.2; }
+  .node-sub { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+
+  .node .pulse {
+    position: absolute;
+    inset: -3px;
+    border-radius: 10px;
+    border: 2px solid var(--accent);
+    animation: pulse-ring 1.2s ease-out infinite;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .node.active .pulse { opacity: 1; }
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: .6; }
+    100% { transform: scale(1.06); opacity: 0; }
+  }
+
+  .node .data-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 6px;
+    opacity: 0;
+    transition: .3s;
+  }
+  .node.done .data-badge { opacity: 1; }
+
+  /* SVG connectors */
+  .connector-svg {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 0;
+  }
+  .connector-svg line, .connector-svg path {
+    stroke: var(--border);
+    stroke-width: 1.5; fill: none;
+    transition: stroke .6s;
+  }
+  .connector-svg .active-line {
+    stroke: var(--accent);
+    stroke-width: 2;
+  }
+
+  /* ─── Right Panel (Detail) ─── */
+  .panel-right {
+    width: var(--panel-w);
+    min-width: var(--panel-w);
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel-right .header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .panel-right .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+  }
+
+  .detail-section { margin-bottom: 14px; }
+  .detail-section h3 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent-dim);
+    margin-bottom: 4px;
+  }
+
+  .hyp-card {
+    background: rgba(61,214,140,.06);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 4px 0;
+    font-size: 11px;
+  }
+  .hyp-card .src {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    background: rgba(61,214,140,.12);
+    color: var(--accent);
+  }
+  .hyp-card .plan { color: var(--text-bright); margin: 2px 0; }
+  .hyp-card .d { font-weight: 600; }
+  .hyp-card .d.ok { color: var(--accent); }
+  .hyp-card .d.bad { color: var(--red); }
+  .hyp-card .rat { color: var(--text-dim); font-style: italic; font-size: 10px; }
+
+  .rec-card {
+    background: rgba(240,192,64,.06);
+    border: 1px solid rgba(240,192,64,.15);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin: 3px 0;
+    font-size: 11px;
+  }
+  .rec-card .s { color: var(--gold); font-weight: 600; }
+
+  .detail-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(42,74,58,.3);
+  }
+
+  /* ─── Buttons ─── */
+  .btn {
+    padding: 6px 14px;
+    border-radius: 5px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    transition: .2s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--accent); color: var(--bg); }
+  .btn-primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+  .btn-primary:hover { background: var(--accent-dim); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-sm { padding: 3px 10px; font-size: 11px; }
+  .btn-gold { border-color: var(--gold); color: var(--gold); }
+  .btn-gold:hover { background: var(--gold); color: var(--bg); }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ─── Scroll ─── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  @media (max-width: 1100px) {
+    .panel-left, .panel-right { width: 240px; min-width: 240px; }
+    .node { width: 140px; min-height: 46px; }
+    .node.colspan { width: calc(140px * 2 + 16px); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ─── LEFT: Input Panel ─── -->
+  <div class="panel-left">
+    <div class="header">📥 Nhập dữ liệu bệnh nhân</div>
+    <div class="body" id="inputForm"></div>
+    <div class="footer">
+      <button class="btn btn-primary" id="runBtn" onclick="runAnalysis()" style="flex:1">▶ Phân tích</button>
+      <button class="btn btn-sm" onclick="resetForm()" title="Mẫu bệnh nhân">⤾ Mẫu</button>
+    </div>
+  </div>
+
+  <!-- ─── CENTER: Tree ─── -->
+  <div class="panel-center">
+    <div class="center-header">
+      <h2>🌲 WhisperForest</h2>
+      <span style="color:var(--text-dim)">—</span>
+      <span class="status-bar" id="statusBar">Sẵn sàng</span>
+    </div>
+    <div class="tree-wrap">
+      <div class="tree" id="treeContainer"></div>
+    </div>
+  </div>
+
+  <!-- ─── RIGHT: Detail ─── -->
+  <div class="panel-right">
+    <div class="header">
+      <span>📋</span> <span id="detailTitle">Chi tiết</span>
+    </div>
+    <div class="body" id="detailContent">
+      <div style="color:var(--text-dim);font-size:12px;padding:20px;text-align:center">
+        Nhập dữ liệu bệnh nhân<br>và nhấn <strong style="color:var(--accent)">Phân tích</strong>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── State ───
+let TREE = {};
+let FEATURES = [];
+const NODE_ORDER = ['data','predictive','causal','rca','trace','cate','memory','reasoner','counterfactual','policy','auditor'];
+const NODE_ICONS = {database:'📦',brain:'🧠',graph:'🔗',search:'🔍',file:'📋',chart:'📊',cogs:'⚙️',flask:'🧪',book:'📖',shield:'🛡️'};
+
+// ─── Init ───
+async function init() {
+  const [treeRes, targetRes] = await Promise.all([
+    fetch('/api/tree'),
+    fetch('/api/target'),
+  ]);
+  TREE = await treeRes.json();
+  const targetInfo = await targetRes.json();
+  FEATURES = targetInfo.features || [];
+  renderTree(TREE);
+  renderForm(targetInfo);
+}
+init();
+
+// ─── Render Tree ───
+function renderTree(data) {
+  const container = document.getElementById('treeContainer');
+  container.innerHTML = '';
+
+  const nodes = Object.values(data);
+  const maxRow = Math.max(...nodes.map(n => n.row));
+  const rows = [];
+  for (let r = 0; r <= maxRow; r++) {
+    rows.push(nodes.filter(n => n.row === r).sort((a,b) => a.col - b.col));
+  }
+
+  rows.forEach((rowNodes, rIdx) => {
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'tree-row';
+
+    rowNodes.forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'node visible' + (n.colspan ? ' colspan' : '');
+      el.id = 'node-' + n.id;
+      el.dataset.id = n.id;
+      el.innerHTML = `
+        <div>
+          <span class="node-icon">${NODE_ICONS[n.icon] || '●'}</span>
+          <span class="node-label">${n.label}</span>
+        </div>
+        <div class="node-sub">${n.description}</div>
+        <div class="pulse"></div>
+        <span class="data-badge">✓</span>
+      `;
+      el.addEventListener('click', () => showDetail(n.id));
+      rowDiv.appendChild(el);
+    });
+    container.appendChild(rowDiv);
+  });
+
+  drawConnectors(data, container);
+}
+
+function drawConnectors(data, container) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('class','connector-svg');
+  container.appendChild(svg);
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const nodeMap = {};
+    document.querySelectorAll('.node[id]').forEach(el => {
+      nodeMap[el.id.replace('node-','')] = el.getBoundingClientRect();
+    });
+    const cr = container.getBoundingClientRect();
+    svg.setAttribute('width', container.scrollWidth);
+    svg.setAttribute('height', container.scrollHeight);
+
+    Object.values(data).forEach(n => {
+      if (!n.children || !n.children.length) return;
+      const pr = nodeMap[n.id];
+      if (!pr) return;
+
+      n.children.forEach(childId => {
+        const cr2 = nodeMap[childId];
+        if (!cr2) return;
+        const x1 = pr.left + pr.width/2 - cr.left;
+        const y1 = pr.bottom - cr.top;
+        const x2 = cr2.left + cr2.width/2 - cr.left;
+        const y2 = cr2.top - cr.top;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        const midY = (y1 + y2) / 2;
+        const d = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+        path.setAttribute('d', d);
+        path.dataset.from = n.id;
+        path.dataset.to = childId;
+        svg.appendChild(path);
+      });
+    });
+  }));
+}
+
+// ─── Render Form ───
+function renderForm(info) {
+  const form = document.getElementById('inputForm');
+  const sample = info.sample || {};
+  const features = info.features || [];
+
+  // Feature descriptions
+  const DESCR = {
+    age:'Tuổi', sex:'Giới tính (0=Nữ,1=Nam)',
+    cp:'Đau ngực (0-3)', trestbps:'Huyết áp lúc nghỉ',
+    chol:'Cholesterol (mg/dl)', fbs:'Đường huyết >120 (0/1)',
+    restecg:'ECG lúc nghỉ (0-2)', thalach:'Nhịp tim tối đa',
+    exang:'Đau thắt khi gắng sức (0/1)', oldpeak:'ST chênh xuống',
+    slope:'Độ dốc ST (0-2)', ca:'Mạch vành (0-3)',
+    thal:'Thalassemia (1-3)'
+  };
+
+  features.forEach(f => {
+    const val = sample[f] !== undefined ? sample[f] : '';
+    const desc = DESCR[f] || f;
+    const grp = document.createElement('div');
+    grp.className = 'form-group';
+    grp.innerHTML = `
+      <label for="input-${f}">${desc}</label>
+      <input type="text" id="input-${f}" value="${val}" placeholder="${f}">
+    `;
+    form.appendChild(grp);
+  });
+}
+
+function getPatientFromForm() {
+  const data = {};
+  FEATURES.forEach(f => {
+    const el = document.getElementById('input-' + f);
+    if (el) {
+      const v = el.value.trim();
+      data[f] = v ? (isNaN(Number(v)) ? v : Number(v)) : 0;
+    }
+  });
+  // Add target if in features
+  if (FEATURES.length > 0 && !data.target) data.target = 1;
+  return data;
+}
+
+function resetForm() {
+  fetch('/api/target').then(r => r.json()).then(info => {
+    const sample = info.sample || {};
+    (info.features || []).forEach(f => {
+      const el = document.getElementById('input-' + f);
+      if (el) el.value = sample[f] !== undefined ? sample[f] : '';
+    });
+  });
+}
+
+// ─── Animate flow ───
+function animateFlow(nodeId, data) {
+  const idx = NODE_ORDER.indexOf(nodeId);
+  if (idx < 0) return;
+
+  // Animate nodes sequentially
+  const delay = idx * 350;
+
+  setTimeout(() => {
+    const el = document.getElementById('node-' + nodeId);
+    if (el) {
+      el.classList.remove('done','active');
+      el.classList.add('active');
+    }
+  }, delay / 2);
+
+  setTimeout(() => {
+    const el = document.getElementById('node-' + nodeId);
+    if (el) {
+      el.classList.remove('active');
+      el.classList.add('done');
+    }
+    // Show in detail panel
+    showDetailFromData(nodeId, data);
+  }, delay);
+}
+
+function animateAllNodes(result) {
+  NODE_ORDER.forEach((id, i) => {
+    setTimeout(() => {
+      const el = document.getElementById('node-' + id);
+      if (el) {
+        el.classList.add('visible');
+        el.classList.remove('active');
+        el.classList.add('done');
+      }
+      if (i === NODE_ORDER.length - 1) {
+        showDetailFromData('auditor', result);
+        const last = document.getElementById('node-auditor');
+        if (last) { last.classList.remove('done'); last.classList.add('active'); }
+        document.getElementById('statusBar').innerHTML = '✅ Hoàn thành';
+      }
+    }, i * 200);
+  });
+}
+
+// ─── Run Analysis ───
+async function runAnalysis() {
+  const btn = document.getElementById('runBtn');
+  const status = document.getElementById('statusBar');
+  btn.disabled = true;
+  status.innerHTML = '<span class="spinner"></span> Đang phân tích...';
+
+  // Reset nodes
+  document.querySelectorAll('.node').forEach(el => {
+    el.classList.remove('done','active');
+  });
+
+  const patient = getPatientFromForm();
+
+  try {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({patient}),
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      status.innerHTML = '❌ ' + data.error;
+      btn.disabled = false;
+      return;
+    }
+
+    animateAllNodes(data);
+    document.getElementById('runBtn').textContent = '⟳ Chạy lại';
+  } catch(e) {
+    status.innerHTML = '❌ Lỗi kết nối';
+  }
+  btn.disabled = false;
+}
+
+// ─── Detail ───
+const DETAIL_MAP = {
+  data: (d) => ({
+    title: '📦 Dữ liệu Quan sát',
+    sections: [
+      { h: 'Bệnh nhân', items: d.patient ? Object.entries(d.patient.features || {}).slice(0,6).map(([k,v]) => ({k,v})) : [] },
+    ]
+  }),
+  predictive: (d) => ({
+    title: '🧠 Predictive Branch',
+    sections: [
+      { h: 'Kết quả dự đoán', items: [
+        {k:'Nguy cơ dự đoán', v: (d.predictive?.risk_score * 100).toFixed(1) + '%'},
+        {k:'Phân loại', v: d.predictive?.predicted_class ? 'Có bệnh' : 'Không bệnh'},
+      ]},
+    ]
+  }),
+  causal: (d) => ({
+    title: '🔗 Causal Discovery',
+    sections: [
+      { h: `DAG (${d.dag?.edges || 0} edges)`, items: (d.dag?.edge_list || []).map(e => ({k:e, v:''})) },
+    ]
+  }),
+  rca: (d) => ({
+    title: '🔍 WhisperTrace RCA',
+    sections: [
+      { h: 'Top nguyên nhân', items: (d.rca?.top_causes || []).map(c => ({k:c.feature, v:'+' + c.attribution.toFixed(4)})) },
+    ]
+  }),
+  trace: (d) => ({
+    title: '📋 Per-patient Causal Trace',
+    sections: [
+      { h: 'Top causes', items: (d.trace?.top_causes || []).map(f => ({k:f, v:'root cause'})) },
+    ]
+  }),
+  cate: (d) => ({
+    title: '📊 CATE + Intervention Effects',
+    sections: [
+      { h: 'Ghi chú', items: [{k:'Không có treatment variable', v:'dùng RCA làm hướng dẫn'}] },
+    ]
+  }),
+  memory: (d) => ({
+    title: '📦 Causal Experience Bank',
+    sections: [
+      { h: 'Thống kê', items: [{k:'Số traces đã lưu', v: d.memory?.trace_count || 0}] },
+    ]
+  }),
+  reasoner: (d) => ({
+    title: '⚙️ SCM Reasoning Engine',
+    sections: [
+      { h: `Giả thuyết (${(d.reasoner?.hypotheses || []).length})`, html: (d.reasoner?.hypotheses || []).map(h => `
+        <div class="hyp-card">
+          <span class="src">${h.source}</span>
+          <div class="plan">${Object.entries(h.plan).map(([k,v]) => `${k}=${v}`).join(', ')}</div>
+          <div><span class="d ${h.success?'ok':'bad'}">Δ=${h.delta > 0 ? '+' : ''}${h.delta.toFixed(4)}</span></div>
+          <div class="rat">${h.rationale}</div>
+        </div>
+      `).join('') },
+    ]
+  }),
+  counterfactual: (d) => ({
+    title: '🧪 Counterfactual Simulation',
+    sections: [
+      { h: 'Kết quả tốt nhất', items: d.counterfactual?.best_plan ? [
+        {k:'Plan', v: Object.entries(d.counterfactual.best_plan).map(([k,v]) => `${k}=${v}`).join(', ')},
+        {k:'Delta', v: d.counterfactual.best_delta?.toFixed(4) || ''},
+      ] : [{k:'Không có', v:'Chưa chạy'}] },
+    ]
+  }),
+  policy: (d) => ({
+    title: '📖 Policy Generator',
+    sections: [
+      { h: 'Khuyến nghị', html: (d.policy?.recommendations || []).map(r => `
+        <div class="rec-card">
+          <span class="s">Score: ${r.score.toFixed(3)}</span>
+          <div>${Object.entries(r.plan).map(([k,v]) => `${k}=${v}`).join(', ')}</div>
+        </div>
+      `).join('') },
+    ]
+  }),
+  auditor: (d) => ({
+    title: '🛡️ Causal Auditor',
+    sections: [
+      { h: 'Kết quả kiểm toán', items: [
+        {k:'Consistency Score', v: d.auditor?.consistency_score?.toFixed(4) || ''},
+        {k:'Safety Status', v: d.auditor?.safety || '', cls: d.auditor?.safety?.includes('SAFE') ? 'ok' : 'bad'},
+      ]},
+      { h: 'Cảnh báo', html: (d.auditor?.warnings || []).map(w => `<div style="color:var(--orange);font-size:11px">⚠ ${w}</div>`).join('') || '<div style="color:var(--text-dim);font-size:11px">Không có</div>' },
+    ]
+  }),
+};
+
+function showDetailFromData(nodeId, result) {
+  const fn = DETAIL_MAP[nodeId];
+  if (!fn) return;
+
+  const data = fn(result);
+  const title = document.getElementById('detailTitle');
+  const content = document.getElementById('detailContent');
+  title.textContent = data.title;
+
+  let html = '';
+  data.sections.forEach(s => {
+    html += `<div class="detail-section"><h3>${s.h}</h3>`;
+    if (s.items) {
+      s.items.forEach(item => {
+        const cls = item.cls ? (item.cls === 'ok' ? 'color:var(--accent)' : 'color:var(--red)') : '';
+        html += `<div class="detail-item"><span>${item.k}</span><span class="val" style="${cls}">${item.v}</span></div>`;
+      });
+    }
+    if (s.html) html += s.html;
+    html += '</div>';
+  });
+  content.innerHTML = html;
+}
+
+function showDetail(nodeId) {
+  // Since we show detail from the last run data, just switch view
+  document.querySelectorAll('.node.active').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('node-' + nodeId);
+  if (el) el.classList.add('active');
+
+  const DESCR = {
+    data:'Dữ liệu Quan sát', predictive:'Predictive Branch', causal:'Causal Discovery',
+    rca:'WhisperTrace RCA', trace:'Causal Trace', cate:'CATE + Intervention',
+    memory:'Causal Experience Bank', reasoner:'SCM Reasoning Engine',
+    counterfactual:'Counterfactual Simulation', policy:'Policy Generator', auditor:'Causal Auditor'
+  };
+  document.getElementById('detailTitle').textContent = '📋 ' + (DESCR[nodeId] || nodeId);
+  document.getElementById('detailContent').innerHTML = `
+    <div style="color:var(--text-dim);font-size:12px;padding:20px;text-align-center">
+      ${TREE[nodeId]?.description || ''}<br><br>
+      <em>Chạy phân tích để xem dữ liệu</em>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

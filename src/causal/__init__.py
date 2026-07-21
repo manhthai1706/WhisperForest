@@ -40,8 +40,10 @@ class CausalBranch:
         """
         return self.estimation.estimate_cate(new_data)
 
-    def audit_consistency(self, patient, interventions, threshold_conflict=0.01):
+    def audit_consistency(self, patient, interventions, threshold_conflict=0.01, rca_report=None):
         """
-        Audit the consistency of the predictive, SCM, and DML layers.
+        Audit the consistency of the predictive, SCM, DML, and RCA layers.
         """
-        return self.auditor.audit(patient, interventions, threshold_conflict=threshold_conflict)
+        return self.auditor.audit(
+            patient, interventions, threshold_conflict=threshold_conflict, rca_report=rca_report
+        )
